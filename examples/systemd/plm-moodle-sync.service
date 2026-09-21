@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchronize PLMlatex PDFs to Moodle
+
+[Service]
+Type=oneshot
+# Replace these paths before enabling the timer. Quote paths in ExecStart.
+WorkingDirectory=/absolute/path/to/project
+ExecStart="/absolute/path/to/project/.venv/bin/plm_moodle_sync" sync --config "/absolute/path/to/config/course.yaml"
+Environment=PYTHONUNBUFFERED=1
+UMask=0077

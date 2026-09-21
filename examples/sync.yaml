@@ -1,0 +1,48 @@
+# Copy to your own YAML file and replace the URLs, IDs, paths, and destinations.
+# One PLMlatex project and one Moodle course per file.
+# Full reference: ../docs/configuration.md
+plmlatex:
+  server: https://plmlatex.math.cnrs.fr
+  project_id: "0123456789abcdef01234567"  # From the project's URL.
+  cookie_file: .secrets/plmlatex.json  # Optional; this is the default.
+
+moodle:
+  server: https://moodle.example.edu
+  course_id: 12345  # From /course/view.php?id=12345.
+  cookie_file: .secrets/moodle.json  # Optional; this is the default.
+
+files:
+  - source:
+      tex: worksheets/sheet1.tex
+    target:
+      section: Worksheets  # String: exact displayed section name.
+      name: Worksheet 1  # Required Moodle display name.
+      # filename omitted: defaults to sheet1.pdf.
+      # visible omitted: preserve the existing resource's visibility.
+
+  - source:
+      tex: worksheets/sheet2.tex
+    target:
+      section: 1234  # Integer: section database ID, not its position.
+      name: Worksheet 2
+      filename: worksheet-2.pdf  # Optional downloadable filename.
+      visible: false  # Optional: false hides the resource; true shows it.
+
+  - source:
+      tex: notes/course.tex
+    target:
+      section: Lecture notes
+      name: Chapter 1
+      filename: chapter-1.pdf
+      pages: "1-11"  # Optional: inclusive physical PDF page numbers.
+
+  - source:
+      tex: notes/appendix.tex
+    # No target: fetch and cache this PDF without publishing it.
+
+# The whole sync mapping and each of its fields are optional.
+# Local paths are relative to this YAML file's directory.
+# sync:
+#   state_file: .cache/sync.json
+#   cache_dir: .cache/files
+#   log_file: .cache/sync.log

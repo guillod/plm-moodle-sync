@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plm-moodle-sync"
+dynamic = ["version"]
+description = "Incremental PLMlatex PDF retrieval and Moodle File synchronization"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE", "plm_moodle_sync/LICENSE.overleaf-sync"]
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.32,<3",
+    "beautifulsoup4>=4.11,<5",
+    "socketIO-client==0.5.7.2",
+    "PyYAML>=6,<7",
+    "python-moodle==1.0.1",  # Adapter uses this version's form-extraction helper.
+    "pypdf>=6,<7",
+]
+
+[project.optional-dependencies]
+login = ["PySide6>=6.5,<7"]
+
+[project.scripts]
+plm_moodle_sync = "plm_moodle_sync.cli:main"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+include = ["plm_moodle_sync", "plm_moodle_sync.*"]
+
+[tool.setuptools.package-data]
+plm_moodle_sync = ["LICENSE.overleaf-sync", "UPSTREAM.md"]

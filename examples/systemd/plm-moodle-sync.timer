@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule PLMlatex to Moodle synchronization
+
+[Timer]
+# Local time: 07:00 through 19:00 inclusive, plus 01:00 every day.
+OnCalendar=*-*-* 07..19:00:00
+OnCalendar=*-*-* 01:00:00
+AccuracySec=1s
+# Do not replay missed runs when the timer is activated after being stopped.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
