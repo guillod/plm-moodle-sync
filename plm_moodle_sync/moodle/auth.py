@@ -25,9 +25,11 @@ DASHBOARD_CHECK = """(() => {
 
 
 def is_moodle_dashboard(url, server):
-    actual, expected = urlsplit(url), urlsplit(server + '/my/')
-    return (actual.scheme, actual.netloc, actual.path.rstrip('/')) == (
-        expected.scheme, expected.netloc, expected.path.rstrip('/'))
+    # Moodle can redirect /my/ to its home page or another configured landing
+    # page. DASHBOARD_CHECK still requires authenticated navigation and sesskey.
+    actual, expected = urlsplit(url), urlsplit(server.rstrip('/'))
+    return (actual.scheme, actual.netloc) == (expected.scheme, expected.netloc) and (
+        actual.path == expected.path or actual.path.startswith(expected.path + '/'))
 
 
 def page_session_key(html, server):

@@ -105,6 +105,19 @@ class MoodleTests(unittest.TestCase):
         self.client.authenticate()
         self.assertEqual(self.client.sesskey, 'syntheticKey')
 
+    def test_browser_accepts_moodle_landing_pages_within_the_configured_site(self):
+        for path in ('', '/', '/?redirect=0', '/my/', '/my/index.php',
+                     '/my/courses.php', '/course/view.php?id=301'):
+            with self.subTest(path=path):
+                self.assertTrue(login_spec(SERVER).is_dashboard(SERVER + path))
+
+    def test_browser_rejects_landing_pages_outside_the_configured_site(self):
+        for url in ('https://sso.example/instance/', 'http://moodle.example/instance/',
+                    'https://moodle.example/', 'https://moodle.example/instance-other/',
+                    'https://moodle.example:8443/instance/'):
+            with self.subTest(url=url):
+                self.assertFalse(login_spec(SERVER).is_dashboard(url))
+
     def test_anonymous_or_guest_session_key_is_not_login_success(self):
         for html in (DASHBOARD.replace('<a ', '<span ').replace('</a>', '</span>'),
                      DASHBOARD.replace('<body>', '<body class="guestuser">'),

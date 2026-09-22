@@ -48,6 +48,10 @@ must match the configured server. PLMlatex CSRF tokens are obtained when needed.
 To create these files using an existing Firefox or Chrome session, follow the
 [manual login guide](manual-login.md).
 
+For ENS/PSL, set `moodle.server: https://moodle.psl.eu`. Moodle sign-in also
+recognizes an authenticated home or course page when the site redirects away
+from `/my/`. Use a separate `moodle.cookie_file` for each Moodle server.
+
 Keep sessions private and outside version control. `.secrets/` is ignored by
 this repository; exclude any custom session paths as well.
 

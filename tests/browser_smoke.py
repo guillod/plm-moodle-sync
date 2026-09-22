@@ -117,6 +117,37 @@ class MoodleBrowserSmokeTests(BrowserSmokeTests):
         self.window.dashboard_checked(True)
         self.assertIsNone(self.window.result)
 
+    def test_authenticated_site_home_completes_login(self):
+        # Sites such as ENS/PSL redirect /my/ to the Moodle home page.
+        self.cookie()
+        self.page('https://moodle.example/instance/?redirect=0', '''
+            <script>window.M = {cfg: {sesskey: "synthetic"}};</script>
+            <a href="/instance/login/logout.php?sesskey=synthetic">Log out</a>
+        ''')
+        self.wait_for(lambda: self.window.closed)
+        self.assertEqual(self.window.result, {'MoodleSession': 'synthetic-test-cookie'})
+
+    def test_anonymous_site_home_does_not_complete_login(self):
+        # An anonymous Moodle page also has a session cookie and sesskey.
+        self.cookie()
+        self.page('https://moodle.example/instance/', '''
+            <script>window.M = {cfg: {sesskey: "synthetic"}};</script>
+            <a href="/instance/login/index.php">Sign in</a>
+        ''')
+        self.assertIsNone(self.window.result)
+        self.assertFalse(self.window.dashboard_ready)
+
+    def test_guest_site_home_does_not_complete_login(self):
+        self.cookie()
+        self.page('https://moodle.example/instance/', '''
+            <script>window.M = {cfg: {sesskey: "synthetic"}};</script>
+            <body class="guestuser">
+                <a href="/instance/login/logout.php?sesskey=synthetic">Log out</a>
+            </body>
+        ''')
+        self.assertIsNone(self.window.result)
+        self.assertFalse(self.window.dashboard_ready)
+
 
 if __name__ == '__main__':
     unittest.main()
