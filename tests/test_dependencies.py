@@ -190,6 +190,63 @@ class IncrementalTests(unittest.TestCase):
         self.assertEqual(result['files'][0]['inputs']['TD/td1.tex']['version'], 1)
         self.assertEqual(self.run_sync()['compiled'], [])
 
+    def test_missing_operation_history_preserves_content_based_rebuilds(self):
+        self.run_sync()
+        wire = Mock()
+        requests = []
+
+        def emit(event, *args):
+            if event != 'joinDoc':
+                return
+            path, requested, _, callback = args
+            version = self.client.versions[path]
+            requests.append((path, requested))
+            if requested != -1 and requested != version:
+                callback({'message': 'doc updater could not load requested ops'})
+            else:
+                lines = self.client.texts[path].split('\n') if requested == -1 else None
+                callback(None, lines, version)
+
+        wire.emit.side_effect = emit
+        def read_document(socket, doc_id, previous_version=-1):
+            return PLMlatexClient.read_document(wire, doc_id, previous_version)
+
+        with patch.object(self.client, 'read_document', side_effect=read_document):
+            for changed in (False, True):
+                with self.subTest(content_changed=changed):
+                    self.client.versions['TD/td1.tex'] += 1
+                    if changed:
+                        self.client.texts['TD/td1.tex'] += '\n% Changed content'
+                    requests.clear()
+                    result = self.run_sync()
+                    self.assertEqual(result['compiled'], ['TD/td1.tex'] if changed else [])
+                    self.assertIn(('TD/td1.tex', -1), requests)
+                    self.assertNotIn(('TD/td2.tex', -1), requests)
+                    self.assertEqual(result['files'][0]['inputs']['TD/td1.tex']['version'],
+                                     self.client.versions['TD/td1.tex'])
+                    requests.clear()
+                    self.assertEqual(self.run_sync()['compiled'], [])
+                    self.assertTrue(all(version != -1 for _, version in requests))
+
+    def test_revision_errors_name_the_source_before_compilation(self):
+        with patch.object(self.client, 'read_document', side_effect=CompilationError('Revision read failed')):
+            with self.assertRaisesRegex(CompilationError, 'PLMlatex source TD/td1.tex: Revision read failed'):
+                self.run_sync()
+        self.assertEqual(self.client.compiled, [])
+        self.assertFalse((self.directory / 'state.json').exists())
+
+    def test_revision_errors_name_the_source_during_build_verification(self):
+        compile_pdf = self.client.compile_pdf
+        def compile_then_fail(*args, **kwargs):
+            result = compile_pdf(*args, **kwargs)
+            self.client.read_document = Mock(side_effect=CompilationError('Revision read failed'))
+            return result
+        with patch.object(self.client, 'compile_pdf', side_effect=compile_then_fail):
+            with self.assertRaisesRegex(CompilationError, 'PLMlatex source TD/preamble.tex: Revision read failed'):
+                self.run_sync()
+        self.assertFalse((self.directory / 'state.json').exists())
+        self.assertEqual(list(self.directory.rglob('*.pdf')), [])
+
     def test_unrelated_addition_rename_and_removal_do_not_rebuild(self):
         self.run_sync()
         self.client.uploads['TD/new-image.png'] = b'unrelated'
@@ -406,6 +463,67 @@ class IncrementalTests(unittest.TestCase):
 
 
 class RevisionTests(unittest.TestCase):
+    def socket_with_replies(self, replies):
+        socket = Mock()
+        pending = iter(replies)
+        def emit(event, *args):
+            if event == 'joinDoc':
+                reply = next(pending)
+                if reply is not None:
+                    args[-1](*reply)
+        socket.emit.side_effect = emit
+        return socket
+
+    def test_missing_operation_history_fetches_full_source_once(self):
+        socket = self.socket_with_replies([
+            ({'message': 'doc updater could not load requested ops'},),
+            (None, ['First line', 'Second line'], 4),
+        ])
+        self.assertEqual(PLMlatexClient.read_document(socket, 'id', 3),
+                         {'version': 4, 'text': 'First line\nSecond line'})
+        calls = socket.emit.call_args_list
+        self.assertEqual([call.args[0] for call in calls], ['joinDoc', 'leaveDoc', 'joinDoc', 'leaveDoc'])
+        self.assertEqual([call.args[2] for call in calls if call.args[0] == 'joinDoc'], [3, -1])
+
+    def test_server_errors_have_bounded_retries_and_do_not_expose_response(self):
+        for previous, expected in ((3, [3, -1]), (-1, [-1])):
+            with self.subTest(previous=previous):
+                socket = self.socket_with_replies([({'message': 'secret response'},)] * 2)
+                with self.assertRaisesRegex(CompilationError, 'rejected the full source request') as error:
+                    PLMlatexClient.read_document(socket, 'id', previous)
+                self.assertNotIn('secret', str(error.exception))
+                self.assertEqual([call.args[2] for call in socket.emit.call_args_list if call.args[0] == 'joinDoc'], expected)
+
+    def test_timeout_is_distinct_and_does_not_start_another_request(self):
+        socket = self.socket_with_replies([None])
+        with self.assertRaisesRegex(CompilationError, 'Timed out'):
+            PLMlatexClient.read_document(socket, 'id', 3, timeout=7)
+        socket.wait_for_callbacks.assert_called_once_with(seconds=7)
+        self.assertEqual(sum(call.args[0] == 'joinDoc' for call in socket.emit.call_args_list), 1)
+
+    def test_malformed_replies_are_not_treated_as_missing_history(self):
+        for reply in ((), (None,), (None, ['source'])):
+            with self.subTest(reply=reply):
+                socket = self.socket_with_replies([reply])
+                with self.assertRaisesRegex(CompilationError, 'invalid document response'):
+                    PLMlatexClient.read_document(socket, 'id', 3)
+                self.assertEqual(sum(call.args[0] == 'joinDoc' for call in socket.emit.call_args_list), 1)
+
+    def test_invalid_revision_is_rejected(self):
+        for version in (None, '4', True, -1):
+            with self.subTest(version=version):
+                socket = self.socket_with_replies([(None, ['source'], version)])
+                with self.assertRaisesRegex(CompilationError, 'invalid revision'):
+                    PLMlatexClient.read_document(socket, 'id', -1)
+
+    def test_full_snapshot_must_contain_source_even_after_fallback(self):
+        for previous in (-1, 3):
+            with self.subTest(previous=previous):
+                replies = [({'message': 'missing history'},)] if previous != -1 else []
+                socket = self.socket_with_replies([*replies, (None, None, 4)])
+                with self.assertRaisesRegex(CompilationError, 'no source text'):
+                    PLMlatexClient.read_document(socket, 'id', previous)
+
     def test_changed_revision_fetches_full_source_after_incremental_reply(self):
         socket = Mock()
         responses = [(None, None, 2), (None, ['cafÃ©'], 2)]

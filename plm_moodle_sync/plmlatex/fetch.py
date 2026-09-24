@@ -53,6 +53,12 @@ class Sources:
         self.records, self.contents = {}, {}
         self.locations = source_locations(entries)
 
+    def read_document(self, path, previous_version):
+        try:
+            return self.client.read_document(self.socket, self.entries[path]['id'], previous_version)
+        except CompilationError as error:
+            raise CompilationError(f'PLMlatex source {path}: {error}') from error
+
     def get(self, path):
         if path in self.records:
             return self.records[path]
@@ -69,7 +75,7 @@ class Sources:
             record['cache_path'] = self.locations[path]
         if entry['kind'] == 'doc':
             previous_version = old.get('version', -1) if reuse else -1
-            snapshot = self.client.read_document(self.socket, entry['id'], previous_version)
+            snapshot = self.read_document(path, previous_version)
             if snapshot['version'] == previous_version and reuse:
                 content = cached
             elif snapshot['text'] is not None:
@@ -119,7 +125,7 @@ class Sources:
         for path in sorted(dependencies):
             before = self.records[path]
             if before['kind'] == 'doc':
-                after = self.client.read_document(self.socket, before['id'], before['version'])
+                after = self.read_document(path, before['version'])
                 if after['version'] != before['version']:
                     raise CompilationError('Source changed during compilation; retry: ' + path)
             else:

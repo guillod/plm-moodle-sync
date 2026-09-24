@@ -110,17 +110,28 @@ class PLMlatexClient:
 
         Servers may send full text even for an unchanged revision (e.g. after
         clearing their operation cache). The caller can still reuse its source.
+        If the server rejects a cached revision, request full source once.
         """
         def read(version):
             replies = []
             socket_io.emit('joinDoc', doc_id, version, {}, lambda *args: replies.append(args))
             socket_io.wait_for_callbacks(seconds=timeout)
-            if not replies or len(replies[0]) < 3 or replies[0][0] is not None:
-                raise CompilationError('Could not read the document revision.')
-            _, lines, current_version, *unused = replies[0]
-            if type(current_version) is not int:
-                raise CompilationError('The document returned an invalid revision.')
+            if not replies:
+                raise CompilationError('Timed out waiting for the PLMlatex document revision; retry.')
             socket_io.emit('leaveDoc', doc_id)
+            if replies[0] and replies[0][0] is not None:
+                # The server may no longer have the operations needed to replay
+                # a cached revision. A full snapshot does not need that history.
+                if version != -1:
+                    return read(-1)
+                raise CompilationError('PLMlatex rejected the full source request; retry or check access in the editor.')
+            if len(replies[0]) < 3:
+                raise CompilationError('PLMlatex returned an invalid document response.')
+            _, lines, current_version, *unused = replies[0]
+            if type(current_version) is not int or current_version < 0:
+                raise CompilationError('The document returned an invalid revision.')
+            if version == -1 and lines is None:
+                raise CompilationError('PLMlatex returned no source text for a full document request.')
             return lines, current_version
 
         lines, version = read(previous_version)

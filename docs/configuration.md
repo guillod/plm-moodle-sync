@@ -216,6 +216,8 @@ The default layout is:
 
 Sources, graphics, and generated PDFs share project folders. Revisions identify
 sources to download; content hashes determine whether their PDFs need rebuilding.
+If PLMlatex cannot replay a cached revision, the client retries once with the
+full source. Unchanged content still reuses its PDF; no cache reset is needed.
 The scanner resolves TeX inputs, local packages, graphics, bibliography files,
 and simple file-wrapper macros. Compiler recorder inputs supplement discovery.
 Unresolved dependencies conservatively track all project files.
